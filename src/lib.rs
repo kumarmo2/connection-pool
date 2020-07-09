@@ -40,7 +40,7 @@ where
         //TODO: Move this logic to GenericConnectionPool.
         let pool = self.pool.get_connections();
         let mut guard = pool.lock().unwrap();
-        let x = MaybeUninit::<<T as ConnectionConnector>::Conn>::uninit();
+        let x = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
         let x = unsafe { x.assume_init() };
         let real = mem::replace(&mut self.conn, x);
         println!("In drop of LiveConnection");
