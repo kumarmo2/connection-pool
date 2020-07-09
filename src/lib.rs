@@ -91,17 +91,14 @@ where
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
         let num_of_connections;
-        let guard = self._num_of_live_connections.lock().unwrap();
+        let mut guard = self._num_of_live_connections.lock().unwrap();
         num_of_connections = *guard;
         loop {
             println!("num of connections: {}", num_of_connections);
             if num_of_connections < self._max_connections {
                 println!("making a new connection");
                 conn = self._connector.connect().unwrap();
-                {
-                    let mut guard = self._num_of_live_connections.lock().unwrap();
-                    *guard = *guard + 1;
-                }
+                *guard = *guard + 1;
                 break;
             } else {
                 let receiver = Arc::clone(&self._reciever);
