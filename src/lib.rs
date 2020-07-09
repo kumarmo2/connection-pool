@@ -62,6 +62,21 @@ impl<E> GenericConnectionPool<E>
 where
     E: ConnectionConnector,
 {
+    pub fn new(max_connections: u8, min_connections: u8, connector: E) -> Self {
+        let pool = Self {
+            _max_connections: max_connections,
+            _min_connections: min_connections,
+            _connections: Arc::new(Mutex::new(Vec::new())),
+            _connector: connector,
+        };
+        pool
+    }
+}
+
+impl<E> GenericConnectionPool<E>
+where
+    E: ConnectionConnector,
+{
     //TODO: Respect the max and min connections constraints.
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let connections = Arc::clone(&self._connections);
@@ -92,7 +107,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Connection, ConnectionConnector, GenericConnectionPool};
-    use std::sync::{Arc, Mutex};
 
     #[test]
     fn connector_works() {
@@ -114,16 +128,7 @@ mod tests {
 
         let cc = DummyConnectionConnector {};
 
-        let min = 1;
-
-        let connections: Vec<DummyConnection> = (0..min).map(|_| cc.connect().unwrap()).collect();
-
-        let pool = GenericConnectionPool::<DummyConnectionConnector> {
-            _max_connections: 4,
-            _min_connections: 1,
-            _connections: Arc::new(Mutex::new(connections)),
-            _connector: cc,
-        };
+        let pool = GenericConnectionPool::new(4, 1, cc);
         {
             let _connection = pool.get_connection();
         }
