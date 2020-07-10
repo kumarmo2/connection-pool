@@ -41,12 +41,14 @@ where
 {
     fn drop(&mut self) {
         //TODO: Move this logic to GenericConnectionPool.
-        println!("drop of LiveConnection");
-        let x = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
-        let x = unsafe { x.assume_init() };
-        let real = mem::replace(&mut self.conn, x);
-        println!("In drop of LiveConnection, reclaiming the connection");
-        self.pool._sender.send(real);
+        // println!("inside drop");
+        let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
+        // println!("zeroed memory initialized");
+        let zeroed_mem = unsafe { zeroed_mem.assume_init() };
+        // println!("zeroed memory after assume_init");
+        let old_val = mem::replace(&mut self.conn, zeroed_mem);
+        // println!("after replace call");
+        self.pool._sender.send(old_val);
     }
 }
 
@@ -111,7 +113,10 @@ where
                         conn = local_conn;
                         break;
                     } else {
-                        *guard = *guard - 1;
+                        println!("inside else block");
+                        if *guard > 0 {
+                            *guard = *guard - 1;
+                        }
                     }
                 }
             }
