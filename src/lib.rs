@@ -42,8 +42,11 @@ where
     fn drop(&mut self) {
         //TODO: Move this logic to GenericConnectionPool.
         let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
+        println!("zeroed memory initialized");
         let zeroed_mem = unsafe { zeroed_mem.assume_init() };
+        println!("zeroed memory after assume_init");
         let old_val = mem::replace(&mut self.conn, zeroed_mem);
+        println!("after replace call");
         println!("In drop of LiveConnection, reclaiming the connection");
         self.pool._sender.send(old_val);
     }
