@@ -41,6 +41,7 @@ where
 {
     fn drop(&mut self) {
         //TODO: Move this logic to GenericConnectionPool.
+        println!("inside drop");
         let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
         println!("zeroed memory initialized");
         let zeroed_mem = unsafe { zeroed_mem.assume_init() };
