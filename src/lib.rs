@@ -47,7 +47,6 @@ where
         println!("zeroed memory after assume_init");
         let old_val = mem::replace(&mut self.conn, zeroed_mem);
         println!("after replace call");
-        println!("In drop of LiveConnection, reclaiming the connection");
         self.pool._sender.send(old_val);
     }
 }
@@ -87,9 +86,9 @@ where
 {
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
-        println!("inside get connection, acquiring the lock");
+        // println!("inside get connection, acquiring the lock");
         let mut guard = self._num_of_live_connections.lock().unwrap();
-        println!("inside get connection, acquired the lock");
+        // println!("inside get connection, acquired the lock");
         let num_of_connections = *guard;
         loop {
             println!("num of connections: {}", num_of_connections);
