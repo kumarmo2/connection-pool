@@ -41,13 +41,9 @@ where
 {
     fn drop(&mut self) {
         //TODO: Move this logic to GenericConnectionPool.
-        // println!("inside drop");
         let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
-        // println!("zeroed memory initialized");
         let zeroed_mem = unsafe { zeroed_mem.assume_init() };
-        // println!("zeroed memory after assume_init");
         let old_val = mem::replace(&mut self.conn, zeroed_mem);
-        // println!("after replace call");
         self.pool._sender.send(old_val);
     }
 }
@@ -90,12 +86,17 @@ where
         let mut guard = self._num_of_live_connections.lock().unwrap();
         let num_of_connections = *guard;
         loop {
-            println!("num of connections: {}", num_of_connections);
+            // println!("num of connections: {}", num_of_connections);
             if num_of_connections < self._max_connections {
-                println!("making a new connection");
-                conn = self._connector.connect().unwrap();
-                *guard = *guard + 1;
-                break;
+                // println!("making a new connection");
+                match self._connector.connect() {
+                    Some(c) => {
+                        conn = c;
+                        *guard = *guard + 1;
+                        break;
+                    }
+                    None => {}
+                }
             } else {
                 let receiver = Arc::clone(&self._reciever);
 
@@ -105,15 +106,15 @@ where
                 // _num_of_live_connections mutex encapsulates the whole method.
 
                 let guarded_reciever = receiver.lock().unwrap();
-                println!("going to listen on queue");
+                // println!("going to listen on queue");
                 if let Ok(local_conn) = guarded_reciever.recv() {
-                    println!("value recieved from queue");
+                    // println!("value recieved from queue");
                     if local_conn.is_alive() {
-                        println!("reusing connection");
+                        // println!("reusing connection");
                         conn = local_conn;
                         break;
                     } else {
-                        println!("inside else block");
+                        // println!("inside else block");
                         if *guard > 0 {
                             *guard = *guard - 1;
                         }
