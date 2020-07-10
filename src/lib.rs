@@ -46,7 +46,6 @@ where
         let x = unsafe { x.assume_init() };
         let real = mem::replace(&mut self.conn, x);
         println!("In drop of LiveConnection, reclaiming the connection");
-        // guard.push(real);
         self.pool._sender.send(real);
     }
 }
@@ -57,11 +56,9 @@ where
     E: ConnectionConnector + Clone,
 {
     _sender: Sender<<E as ConnectionConnector>::Conn>,
-    //TODO: Think do we really need the Arc here?
     _reciever: Arc<Mutex<Receiver<<E as ConnectionConnector>::Conn>>>,
     _num_of_live_connections: Arc<Mutex<u8>>,
     _max_connections: u8,
-    _min_connections: u8,
     _connector: E,
 }
 
@@ -69,14 +66,13 @@ impl<E> GenericConnectionPool<E>
 where
     E: ConnectionConnector + Clone,
 {
-    pub fn new(max_connections: u8, min_connections: u8, connector: E) -> Self {
+    pub fn new(max_connections: u8, connector: E) -> Self {
         let (sender, receiver) = mpsc::channel::<<E as ConnectionConnector>::Conn>();
         let pool = Self {
             _sender: sender,
             _num_of_live_connections: Arc::new(Mutex::new(0)),
             _reciever: Arc::new(Mutex::new(receiver)),
             _max_connections: max_connections,
-            _min_connections: min_connections,
             _connector: connector,
         };
         pool
@@ -87,7 +83,6 @@ impl<E> GenericConnectionPool<E>
 where
     E: ConnectionConnector + Clone,
 {
-    //TODO: Respect the max and min connections constraints.
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
         let num_of_connections;
@@ -110,6 +105,8 @@ where
                         println!("reusing connection");
                         conn = local_conn;
                         break;
+                    } else {
+                        *guard = *guard - 1;
                     }
                 }
             }
@@ -145,7 +142,7 @@ mod tests {
 
         let cc = DummyConnectionConnector {};
 
-        let pool = GenericConnectionPool::new(2, 1, cc);
+        let pool = GenericConnectionPool::new(2, cc);
         println!("here");
         {
             for _ in 0..5 {
