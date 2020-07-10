@@ -85,9 +85,8 @@ where
 {
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
-        let num_of_connections;
         let mut guard = self._num_of_live_connections.lock().unwrap();
-        num_of_connections = *guard;
+        let num_of_connections = *guard;
         loop {
             println!("num of connections: {}", num_of_connections);
             if num_of_connections < self._max_connections {
@@ -97,6 +96,12 @@ where
                 break;
             } else {
                 let receiver = Arc::clone(&self._reciever);
+
+                // TODO: Think if we really need to wrap the receiver in a Mutex
+                // as we are using Receiver.recv() in a this method only and which is already
+                // ensured that only one thread will be able to execute this method because of
+                // _num_of_live_connections mutex encapsulates the whole method.
+
                 let guarded_reciever = receiver.lock().unwrap();
                 println!("going to listen on queue");
                 if let Ok(local_conn) = guarded_reciever.recv() {
