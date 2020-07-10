@@ -41,12 +41,11 @@ where
 {
     fn drop(&mut self) {
         //TODO: Move this logic to GenericConnectionPool.
-        println!("drop of LiveConnection");
-        let x = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
-        let x = unsafe { x.assume_init() };
-        let real = mem::replace(&mut self.conn, x);
+        let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
+        let zeroed_mem = unsafe { zeroed_mem.assume_init() };
+        let old_val = mem::replace(&mut self.conn, zeroed_mem);
         println!("In drop of LiveConnection, reclaiming the connection");
-        self.pool._sender.send(real);
+        self.pool._sender.send(old_val);
     }
 }
 
@@ -85,7 +84,9 @@ where
 {
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
+        println!("inside get connection, acquiring the lock");
         let mut guard = self._num_of_live_connections.lock().unwrap();
+        println!("inside get connection, acquired the lock");
         let num_of_connections = *guard;
         loop {
             println!("num of connections: {}", num_of_connections);
@@ -111,7 +112,10 @@ where
                         conn = local_conn;
                         break;
                     } else {
-                        *guard = *guard - 1;
+                        println!("inside else block");
+                        if *guard > 0 {
+                            *guard = *guard - 1;
+                        }
                     }
                 }
             }
