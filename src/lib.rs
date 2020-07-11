@@ -92,7 +92,6 @@ where
             match guarded_reciever.try_recv() {
                 Ok(c) => {
                     if c.is_alive() {
-                        println!("try_recv: reusing connection");
                         conn = c;
                         break;
                     } else {
@@ -101,9 +100,7 @@ where
                         }
                     }
                 }
-                Err(reason) => {
-                    println!("try_recv: could not get connection, reason: {}", reason);
-                }
+                Err(_) => {}
             }
 
             if num_of_connections < self._max_connections {
