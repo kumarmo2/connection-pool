@@ -1,3 +1,4 @@
+// TODO: Need to properly setup the test module.
 #[cfg(test)]
 mod tests {
     use connection_pool::{Connection, ConnectionConnector, GenericConnectionPool};
