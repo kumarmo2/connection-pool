@@ -55,6 +55,7 @@ where
 {
     _sender: Sender<<E as ConnectionConnector>::Conn>,
     _reciever: Arc<Mutex<Receiver<<E as ConnectionConnector>::Conn>>>,
+    // To Keep the GenericConnectionPool Cloneable, couldn't use the AtomicU8.
     _num_of_live_connections: Arc<Mutex<u8>>,
     _max_connections: u8,
     _connector: E,
@@ -84,11 +85,26 @@ where
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
         let conn;
         let mut guard = self._num_of_live_connections.lock().unwrap();
+        let receiver = Arc::clone(&self._reciever);
+        let guarded_reciever = receiver.lock().unwrap();
         let num_of_connections = *guard;
         loop {
-            // println!("num of connections: {}", num_of_connections);
+            match guarded_reciever.try_recv() {
+                Ok(c) => {
+                    if c.is_alive() {
+                        conn = c;
+                        break;
+                    } else {
+                        if *guard > 0 {
+                            *guard = *guard - 1;
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+
             if num_of_connections < self._max_connections {
-                // println!("making a new connection");
+                // Making a new connection
                 match self._connector.connect() {
                     Some(c) => {
                         conn = c;
@@ -98,23 +114,17 @@ where
                     None => {}
                 }
             } else {
-                let receiver = Arc::clone(&self._reciever);
-
                 // TODO: Think if we really need to wrap the receiver in a Mutex
                 // as we are using Receiver.recv() in a this method only and which is already
                 // ensured that only one thread will be able to execute this method because of
                 // _num_of_live_connections mutex encapsulates the whole method.
 
-                let guarded_reciever = receiver.lock().unwrap();
-                // println!("going to listen on queue");
+                // Blocking on queue
                 if let Ok(local_conn) = guarded_reciever.recv() {
-                    // println!("value recieved from queue");
                     if local_conn.is_alive() {
-                        // println!("reusing connection");
                         conn = local_conn;
                         break;
                     } else {
-                        // println!("inside else block");
                         if *guard > 0 {
                             *guard = *guard - 1;
                         }
@@ -123,55 +133,5 @@ where
             }
         }
         Some(LiveConnection { conn, pool: self })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Connection, ConnectionConnector, GenericConnectionPool};
-    use std::thread;
-    use std::time::Duration;
-
-    #[test]
-    fn connector_works() {
-        struct DummyConnection {};
-
-        impl Connection for DummyConnection {
-            fn is_alive(&self) -> bool {
-                true
-            }
-        }
-        #[derive(Clone)]
-        struct DummyConnectionConnector {};
-        impl ConnectionConnector for DummyConnectionConnector {
-            type Conn = DummyConnection;
-
-            fn connect(&self) -> Option<Self::Conn> {
-                Some(DummyConnection {})
-            }
-        }
-
-        let cc = DummyConnectionConnector {};
-
-        let pool = GenericConnectionPool::new(2, cc);
-        println!("here");
-        {
-            for _ in 0..5 {
-                let pool = pool.clone();
-                std::thread::spawn(move || {
-                    let parent_thread_id = thread::current().id();
-                    println!("threadId: {:?}", parent_thread_id);
-                    let conn = pool.get_connection().unwrap();
-                    println!(
-                        "got conection for parentId: {:?} and now sleeping for 2 seconds",
-                        parent_thread_id
-                    );
-                    thread::sleep(Duration::from_secs(2));
-                    println!("awoken: {:?}", parent_thread_id);
-                });
-            }
-        }
-        println!("waiting for 20 seconds");
-        thread::sleep(Duration::from_secs(20));
     }
 }
