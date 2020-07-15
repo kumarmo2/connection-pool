@@ -51,14 +51,14 @@ mod tests {
     fn reuse_single_connection() {
         let cc = DummyConnectionConnector {};
 
-        let pool = GenericConnectionPool::new(5, cc);
+        let pool = GenericConnectionPool::new(5, 2, Duration::from_secs(1), cc);
         println!("here");
         {
             for _ in 0..5 {
                 let pool = pool.clone();
                 std::thread::spawn(move || {
                     let conn = pool.get_connection().unwrap();
-                    thread::sleep(Duration::from_secs(1));
+                    // thread::sleep(Duration::from_secs(1));
                 });
                 thread::sleep(Duration::from_secs(2));
             }
