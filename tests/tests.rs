@@ -1,4 +1,14 @@
 // TODO: Need to properly setup the test module.
+
+/*
+* Tests
+*
+1 Getting connections work.
+2 Max Connection respected.
+3 Min Connection respected.
+4 Idle Connections getting killed
+*/
+
 #[cfg(test)]
 mod tests {
     use connection_pool::{Connection, ConnectionConnector, GenericConnectionPool};
@@ -51,19 +61,29 @@ mod tests {
     fn reuse_single_connection() {
         let cc = DummyConnectionConnector {};
 
-        let pool = GenericConnectionPool::new(5, 2, Duration::from_secs(1), cc);
+        let pool = GenericConnectionPool::new(5, 2, Duration::from_secs(10), cc);
         println!("here");
         {
             for _ in 0..5 {
                 let pool = pool.clone();
                 std::thread::spawn(move || {
                     let conn = pool.get_connection().unwrap();
-                    // thread::sleep(Duration::from_secs(1));
+                    thread::sleep(Duration::from_secs(1));
                 });
-                thread::sleep(Duration::from_secs(2));
+                // thread::sleep(Duration::from_secs(2));
             }
         }
         println!("waiting for 20 seconds");
-        thread::sleep(Duration::from_secs(20));
+        thread::sleep(Duration::from_secs(25));
+        for _ in 0..5 {
+            let pool = pool.clone();
+            std::thread::spawn(move || {
+                let conn = pool.get_connection().unwrap();
+                thread::sleep(Duration::from_secs(1));
+            });
+            // thread::sleep(Duration::from_secs(2));
+        }
+        println!("waiting for 25 seconds");
+        thread::sleep(Duration::from_secs(25));
     }
 }

@@ -6,7 +6,7 @@ use std::{
         mpsc::{self, Receiver, Sender},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub trait Connection {
@@ -17,6 +17,14 @@ pub trait ConnectionConnector {
     type Conn: Connection;
     // TODO:  Will need to change the Option to Result
     fn connect(&self) -> Option<Self::Conn>;
+}
+
+struct PoolEntry<T>
+where
+    T: ConnectionConnector,
+{
+    _conn: <T as ConnectionConnector>::Conn,
+    _idle_start_instant: Option<Instant>,
 }
 
 pub struct LiveConnection<'a, T>
@@ -49,7 +57,11 @@ where
         let zeroed_mem = MaybeUninit::<<T as ConnectionConnector>::Conn>::zeroed();
         let zeroed_mem = unsafe { zeroed_mem.assume_init() };
         let old_val = mem::replace(&mut self._conn, zeroed_mem);
-        self._pool._sender.send(old_val);
+        let pool_entry = PoolEntry {
+            _conn: old_val,
+            _idle_start_instant: Some(Instant::now()),
+        };
+        self._pool._sender.send(pool_entry);
     }
 }
 
@@ -60,8 +72,10 @@ where
     E: ConnectionConnector + Clone + Send,
     <E as ConnectionConnector>::Conn: Send,
 {
-    _sender: Sender<<E as ConnectionConnector>::Conn>,
-    _reciever: Arc<Mutex<Receiver<<E as ConnectionConnector>::Conn>>>,
+    // _sender: Sender<<E as ConnectionConnector>::Conn>,
+    _sender: Sender<PoolEntry<E>>,
+    // _reciever: Arc<Mutex<Receiver<<E as ConnectionConnector>::Conn>>>,
+    _reciever: Arc<Mutex<Receiver<PoolEntry<E>>>>,
     _max_idle_duration: Duration,
     // To Keep the GenericConnectionPool Cloneable, couldn't use the AtomicU8.
     _num_of_live_connections: Arc<Mutex<u8>>,
@@ -85,11 +99,12 @@ where
         assert!(min_connections > 0);
         assert!(max_connections >= min_connections);
 
-        let (sender, receiver) = mpsc::channel::<<E as ConnectionConnector>::Conn>();
+        let (sender, receiver) = mpsc::channel::<PoolEntry<E>>();
         let thread_pool = ScheduledThreadPool::new(1);
         let reciever = Arc::new(Mutex::new(receiver));
         let num_of_live_connections = Arc::new(Mutex::new(0));
         let thread_pool = Arc::new(thread_pool);
+
         let pool = Self {
             _sender: sender.clone(),
             _num_of_live_connections: Arc::clone(&num_of_live_connections),
@@ -100,29 +115,34 @@ where
             _connector: connector,
             thread_pool: Arc::clone(&thread_pool),
         };
-        // let cloned = pool.clone();
 
         let thread_pool = Arc::clone(&thread_pool);
         let sender = sender.clone();
         let reciever = Arc::clone(&reciever);
         let num_of_live_connections = Arc::clone(&num_of_live_connections);
+
         thread_pool.execute_at_fixed_rate(
-            Duration::from_secs(10),
-            Duration::from_secs(10),
+            pool._max_idle_duration,
+            pool._max_idle_duration,
             move || {
                 println!("job executed");
                 let reciever = reciever.lock().unwrap();
                 loop {
                     let mut connections = num_of_live_connections.lock().unwrap();
-                    if *connections <= max_connections {
+                    println!("num of connections: {}", *connections);
+                    if *connections <= min_connections {
                         break;
                     }
                     let conn = reciever.recv().unwrap();
-                    if conn.is_alive() {
+                    if conn._conn.is_alive()
+                        && conn._idle_start_instant.as_ref().unwrap().elapsed() < max_idle_duration
+                    {
+                        println!("giving back");
                         sender.send(conn);
                         break;
                     } else {
-                        *connections = *connections + 1;
+                        println!("killing the connection");
+                        *connections = *connections - 1;
                     }
                 }
             },
@@ -145,9 +165,9 @@ where
         loop {
             match guarded_reciever.try_recv() {
                 Ok(c) => {
-                    if c.is_alive() {
+                    if c._conn.is_alive() {
                         // println!("try_recv: reusing, total conns: {}", num_of_connections);
-                        conn = c;
+                        conn = c._conn;
                         break;
                     } else {
                         if *guard > 0 {
@@ -174,8 +194,8 @@ where
 
                         // Blocking on queue
                         if let Ok(local_conn) = guarded_reciever.recv() {
-                            if local_conn.is_alive() {
-                                conn = local_conn;
+                            if local_conn._conn.is_alive() {
+                                conn = local_conn._conn;
                                 break;
                             } else {
                                 if *guard > 0 {
