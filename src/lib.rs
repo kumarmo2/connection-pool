@@ -29,7 +29,7 @@ where
 
 pub struct LiveConnection<'a, T>
 where
-    T: ConnectionConnector + Clone + Send,
+    T: ConnectionConnector + Send + 'static,
     <T as ConnectionConnector>::Conn: Send,
 {
     _conn: <T as ConnectionConnector>::Conn,
@@ -38,7 +38,7 @@ where
 
 impl<'a, T> Deref for LiveConnection<'a, T>
 where
-    T: ConnectionConnector + Clone + Send,
+    T: ConnectionConnector + Send + 'static,
     <T as ConnectionConnector>::Conn: Send,
 {
     type Target = T::Conn;
@@ -49,7 +49,7 @@ where
 
 impl<'a, T> Drop for LiveConnection<'a, T>
 where
-    T: ConnectionConnector + Clone + Send,
+    T: ConnectionConnector + Send + 'static,
     <T as ConnectionConnector>::Conn: Send,
 {
     fn drop(&mut self) {
@@ -65,29 +65,44 @@ where
     }
 }
 
-#[derive(Clone)]
-// TODO: Make an Inner Type and wrap it in the Arc, to remove the constraint for E to be cloneable.
 pub struct GenericConnectionPool<E>
 where
-    E: ConnectionConnector + Clone + Send,
+    E: ConnectionConnector + Send + 'static,
     <E as ConnectionConnector>::Conn: Send,
 {
-    // _sender: Sender<<E as ConnectionConnector>::Conn>,
     _sender: Sender<PoolEntry<E>>,
-    // _reciever: Arc<Mutex<Receiver<<E as ConnectionConnector>::Conn>>>,
     _reciever: Arc<Mutex<Receiver<PoolEntry<E>>>>,
     _max_idle_duration: Duration,
     // To Keep the GenericConnectionPool Cloneable, couldn't use the AtomicU8.
     _num_of_live_connections: Arc<Mutex<u8>>,
     _max_connections: u8,
     _min_connections: u8,
-    thread_pool: Arc<ScheduledThreadPool>,
-    _connector: E,
+    _thread_pool: Arc<ScheduledThreadPool>,
+    _connector: Arc<E>,
+}
+
+impl<E> Clone for GenericConnectionPool<E>
+where
+    E: ConnectionConnector + Send + 'static,
+    <E as ConnectionConnector>::Conn: Send,
+{
+    fn clone(&self) -> Self {
+        GenericConnectionPool {
+            _connector: Arc::clone(&self._connector),
+            _max_connections: self._max_connections,
+            _max_idle_duration: self._max_idle_duration,
+            _min_connections: self._min_connections,
+            _num_of_live_connections: Arc::clone(&self._num_of_live_connections),
+            _reciever: Arc::clone(&self._reciever),
+            _thread_pool: Arc::clone(&self._thread_pool),
+            _sender: self._sender.clone(),
+        }
+    }
 }
 
 impl<E> GenericConnectionPool<E>
 where
-    E: ConnectionConnector + Clone + Send + 'static,
+    E: ConnectionConnector + Send + 'static,
     <E as ConnectionConnector>::Conn: Send,
 {
     pub fn new(
@@ -112,8 +127,8 @@ where
             _max_connections: max_connections,
             _min_connections: min_connections,
             _max_idle_duration: max_idle_duration,
-            _connector: connector,
-            thread_pool: Arc::clone(&thread_pool),
+            _connector: Arc::new(connector),
+            _thread_pool: Arc::clone(&thread_pool),
         };
 
         let thread_pool = Arc::clone(&thread_pool);
@@ -125,7 +140,6 @@ where
             pool._max_idle_duration,
             pool._max_idle_duration,
             move || {
-                println!("job executed");
                 let reciever = reciever.lock().unwrap();
                 loop {
                     let mut connections = num_of_live_connections.lock().unwrap();
@@ -153,7 +167,7 @@ where
 
 impl<E> GenericConnectionPool<E>
 where
-    E: ConnectionConnector + Clone + Send,
+    E: ConnectionConnector + Send,
     <E as ConnectionConnector>::Conn: Send,
 {
     pub fn get_connection(&self) -> Option<LiveConnection<E>> {
