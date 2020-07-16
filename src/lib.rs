@@ -21,7 +21,7 @@ pub trait ConnectionConnector {
 
 struct PoolEntry<T>
 where
-    T: ConnectionConnector,
+    T: ConnectionConnector + Send + 'static,
 {
     _conn: <T as ConnectionConnector>::Conn,
     _idle_start_instant: Option<Instant>,
