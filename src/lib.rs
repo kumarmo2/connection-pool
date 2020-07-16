@@ -81,6 +81,13 @@ where
     _connector: Arc<E>,
 }
 
+unsafe impl<E> Send for GenericConnectionPool<E>
+where
+    E: ConnectionConnector + Send + 'static,
+    <E as ConnectionConnector>::Conn: Send,
+{
+}
+
 impl<E> Clone for GenericConnectionPool<E>
 where
     E: ConnectionConnector + Send + 'static,
